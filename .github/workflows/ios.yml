@@ -24,3 +24,47 @@ jobs:
             -scheme CalorieTracker \
             -destination "platform=iOS Simulator,name=$DEVICE" \
             CODE_SIGNING_ALLOWED=NO
+
+  build-ipa:
+    # Unsigned .ipa for sideloading (AltStore / Sideloadly re-sign it with your Apple ID).
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Archive (unsigned, device build)
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project CalorieTracker.xcodeproj \
+            -scheme CalorieTracker \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/CalorieTracker.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package .ipa
+        run: |
+          mkdir -p build/Payload
+          cp -R build/CalorieTracker.xcarchive/Products/Applications/CalorieTracker.app build/Payload/
+          cd build && zip -qry MassTrack-unsigned.ipa Payload
+          ls -lh MassTrack-unsigned.ipa
+
+      - name: Simulator build (.app for Xcode Simulator)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project CalorieTracker.xcodeproj \
+            -scheme CalorieTracker \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -derivedDataPath build/sim \
+            CODE_SIGNING_ALLOWED=NO
+          cd build/sim/Build/Products/Release-iphonesimulator && zip -qry ../../../../MassTrack-simulator.zip CalorieTracker.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MassTrack-ios-builds
+          path: |
+            build/MassTrack-unsigned.ipa
+            build/MassTrack-simulator.zip
+          if-no-files-found: error
